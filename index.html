@@ -455,16 +455,40 @@
 
   function lc(s) { return (s || '').toLowerCase(); }
 
+  function usernameFromHref(href) {
+    if (typeof href !== 'string') return '';
+    try {
+      const path = href.replace(/^https?:\/\/[^/]+\//i, '').replace(/\/+$/, '');
+      const parts = path.split('/').filter(Boolean);
+      const last = parts[parts.length - 1] || '';
+      return decodeURIComponent(last).trim();
+    } catch (e) { return ''; }
+  }
+
   function extractUsernames(json) {
     const found = new Map(); // lowercase -> original
+    function add(v) {
+      if (typeof v === 'string' && v.trim()) {
+        const clean = v.trim();
+        if (!found.has(lc(clean))) found.set(lc(clean), clean);
+      }
+    }
     function walk(node) {
       if (Array.isArray(node)) { node.forEach(walk); return; }
       if (node && typeof node === 'object') {
         if (Array.isArray(node.string_list_data)) {
+          // Username may live on the parent "title", on each entry's
+          // "value", or only be recoverable from the profile "href" —
+          // Instagram's export shape has varied across versions.
+          const parentTitle = typeof node.title === 'string' ? node.title.trim() : '';
           node.string_list_data.forEach((item) => {
-            if (item && typeof item.value === 'string' && item.value.trim()) {
-              const v = item.value.trim();
-              if (!found.has(lc(v))) found.set(lc(v), v);
+            if (!item) return;
+            if (typeof item.value === 'string' && item.value.trim()) {
+              add(item.value);
+            } else if (parentTitle) {
+              add(parentTitle);
+            } else if (item.href) {
+              add(usernameFromHref(item.href));
             }
           });
         }
